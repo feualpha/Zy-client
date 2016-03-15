@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build ignore
-
 package main
 
 import (
@@ -11,13 +9,36 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"bufio"
 	"os/signal"
 	"time"
-
 	"github.com/gorilla/websocket"
 )
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
+
+func recive(c *websocket.Conn, done chan struct{}){
+	defer c.Close()
+	defer close(done)
+	for {
+		_, message, err := c.ReadMessage()
+		if err != nil {
+			log.Println("read:", err)
+			return
+		}
+		log.Printf("recv: %s", message)
+	}
+}
+
+func scan(text chan string){
+	for {
+	  reader := bufio.NewReader(os.Stdin)
+	  in, err := reader.ReadString('\n')
+	  if err == nil {
+	    text <- in
+    }
+  }
+}
 
 func main() {
 	flag.Parse()
@@ -26,7 +47,7 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
+	u := url.URL{Scheme: "ws", Host: *addr, Path: "/wsc"}
 	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -36,27 +57,18 @@ func main() {
 	defer c.Close()
 
 	done := make(chan struct{})
+	text := make(chan string)
 
-	go func() {
-		defer c.Close()
-		defer close(done)
-		for {
-			_, message, err := c.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				return
-			}
-			log.Printf("recv: %s", message)
-		}
-	}()
+	go recive(c, done)
+	go scan(text)
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case t := <-ticker.C:
-			err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
+		case t:= <-text:
+			err = c.WriteMessage(websocket.TextMessage, []byte(t))
 			if err != nil {
 				log.Println("write:", err)
 				return

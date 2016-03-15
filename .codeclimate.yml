@@ -10,6 +10,7 @@ engines:
     enabled: true
 
 ratings:
-  paths: 
+  paths:
     - "**.go"
-exclude_paths: []
+exclude_paths:
+  - README.md

@@ -1,6 +1,6 @@
 ##Readme
 
-zy-client. a chat client for zy. hope this can grow along with zy
+Zy-client. a chat client for Zy.
 
 ###TODO
 - test

@@ -8,16 +8,29 @@ import (
 	"flag"
 	"log"
 	"net/url"
+	"net/http"
 	"os"
 	"bufio"
 	"os/signal"
 	"time"
 	"github.com/gorilla/websocket"
+	"github.com/howeyc/gopass"
+	"strings"
+	"errors"
 )
 
-var addr = flag.String("addr", "localhost:8080", "http service address")
+var addr = flag.String("addr", "127.0.0.1:8080", "http service address")
+var username = flag.String("username", "", "chat username")
+const not_username string = ""
+const error_not_username = "no username"
 
-func recive(c *websocket.Conn, done chan struct{}){
+func get_auth(username string, password string) http.Header {
+	req,_ := http.NewRequest("GET", "/", nil)
+	req.SetBasicAuth(username,password)
+	return req.Header
+}
+
+func recive_message(c *websocket.Conn, done chan struct{}){
 	defer c.Close()
 	defer close(done)
 	for {
@@ -30,7 +43,7 @@ func recive(c *websocket.Conn, done chan struct{}){
 	}
 }
 
-func scan(text chan string){
+func scan_message(text chan string){
 	for {
 	  reader := bufio.NewReader(os.Stdin)
 	  in, err := reader.ReadString('\n')
@@ -40,35 +53,60 @@ func scan(text chan string){
   }
 }
 
-func main() {
-	flag.Parse()
-	log.SetFlags(0)
+func scan_password() string {
+	log.Printf("type your password: ")
+  pass,err := gopass.GetPasswd()
+  if err == nil {
+    return string(pass)
+  }
+	return ""
+}
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/wsc"}
-	log.Printf("connecting to %s", u.String())
-
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Fatal("dial:", err)
+func validate_username(username string) bool {
+	if strings.Compare(username, not_username) != 0 {
+	  return true
+	}	else {
+		return false
 	}
-	defer c.Close()
+}
 
+func generate_credential(username *string) (http.Header, error) {
+	err := errors.New(error_not_username)
+	auth_header := new(http.Header)
+	if validate_username(*username){
+		err = nil
+		pass := scan_password()
+		*auth_header = get_auth(*username, pass)
+	}
+	return *auth_header, err
+}
+
+func print_error_and_exit(err error, code int){
+	log.Println(err)
+	os.Exit(code)
+}
+
+func get_websocket_connection(auth_header http.Header)(*websocket.Conn, error){
+	u := url.URL{Scheme: "ws", Host: *addr, Path: "wsc"}
+	log.Printf("connecting to %s", u.String())
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), auth_header)
+	return c, err
+}
+
+func start_scan_routine(c *websocket.Conn, done chan struct{}, text chan string){
+	go recive_message(c, done)
+	go scan_message(text)
+}
+
+func chat_routine(c *websocket.Conn, interrupt chan os.Signal){
 	done := make(chan struct{})
 	text := make(chan string)
-
-	go recive(c, done)
-	go scan(text)
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	start_scan_routine(c, done, text)
 
 	for {
 		select {
 		case t:= <-text:
-			err = c.WriteMessage(websocket.TextMessage, []byte(t))
+			err := c.WriteMessage(websocket.TextMessage, []byte(t))
 			if err != nil {
 				log.Println("write:", err)
 				return
@@ -90,4 +128,25 @@ func main() {
 			return
 		}
 	}
+}
+
+func main() {
+	//prepare initial
+	flag.Parse()
+	log.SetFlags(0)
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+
+	//generate_credential
+	//auto exit if error
+	auth_header,err := generate_credential(username)
+	if err != nil { print_error_and_exit(err, 101) }
+
+	//get websocket connection
+	//auto exit if error
+	c, err := get_websocket_connection(auth_header)
+	if err != nil { print_error_and_exit(err, 102) }
+	defer c.Close()
+
+	chat_routine(c, interrupt)
 }

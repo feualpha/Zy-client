@@ -44,6 +44,7 @@ func recive_message(c *websocket.Conn, done chan struct{}){
 }
 
 func scan_message(text chan string){
+	defer close(text)
 	for {
 	  reader := bufio.NewReader(os.Stdin)
 	  in, err := reader.ReadString('\n')

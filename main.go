@@ -5,24 +5,37 @@
 package main
 
 import (
+	"bytes"
+	"bufio"
+	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
+	"github.com/gorilla/websocket"
+	"github.com/howeyc/gopass"
+	"io/ioutil"
 	"log"
 	"net/url"
 	"net/http"
 	"os"
-	"bufio"
 	"os/signal"
-	"time"
-	"github.com/gorilla/websocket"
-	"github.com/howeyc/gopass"
 	"strings"
-	"errors"
+	"time"
 )
 
-var addr = flag.String("addr", "127.0.0.1:8080", "http service address")
-var username = flag.String("username", "", "chat username")
+var (
+	addr = flag.String("addr", "127.0.0.1:8080", "http service address")
+	username = flag.String("username", "", "chat username")
+	register = flag.Bool("register", false, "set to register")
+)
+
 const not_username string = ""
 const error_not_username = "no username"
+
+type registerData struct {
+  Username string
+  Password string
+}
 
 func get_auth(username string, password string) http.Header {
 	req,_ := http.NewRequest("GET", "/", nil)
@@ -52,6 +65,16 @@ func scan_message(text chan string){
 	    text <- in
     }
   }
+}
+
+func scan_username() string {
+	log.Printf("type your username: ")
+	var username string
+  _, err := fmt.Scanf("%s", &username)
+  if err == nil {
+    return string(username)
+  }
+	return ""
 }
 
 func scan_password() string {
@@ -138,16 +161,34 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	//generate_credential
-	//auto exit if error
-	auth_header,err := generate_credential(username)
-	if err != nil { print_error_and_exit(err, 101) }
+	if *register {
+		name := scan_username()
+		pass := scan_password()
 
-	//get websocket connection
-	//auto exit if error
-	c, err := get_websocket_connection(auth_header)
-	if err != nil { print_error_and_exit(err, 102) }
-	defer c.Close()
+		url := fmt.Sprintf("http://%s/cregister", *addr)
+		json_value := registerData{Username: name, Password: pass}
 
-	chat_routine(c, interrupt)
+		b := new(bytes.Buffer)
+    json.NewEncoder(b).Encode(json_value)
+    res, _ := http.Post(url, "application/json; charset=utf-8", b)
+
+    log.Println("response Status:", res.Status)
+    log.Println("response Headers:", res.Header)
+    body, _ := ioutil.ReadAll(res.Body)
+    log.Println("response Body:", string(body))
+
+	} else {
+		//generate_credential
+		//auto exit if error
+		auth_header,err := generate_credential(username)
+		if err != nil { print_error_and_exit(err, 101) }
+
+		//get websocket connection
+		//auto exit if error
+		c, err := get_websocket_connection(auth_header)
+		if err != nil { print_error_and_exit(err, 102) }
+		defer c.Close()
+
+		chat_routine(c, interrupt)
+	}
 }

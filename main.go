@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/howeyc/gopass"
-	"io/ioutil"
 	"log"
 	"net/url"
 	"net/http"
@@ -31,6 +30,11 @@ var (
 
 const not_username string = ""
 const error_not_username = "no username"
+
+type registerRespond struct {
+  Code int
+  Message string
+}
 
 type registerData struct {
   Username string
@@ -170,12 +174,18 @@ func main() {
 
 		b := new(bytes.Buffer)
     json.NewEncoder(b).Encode(json_value)
-    res, _ := http.Post(url, "application/json; charset=utf-8", b)
+    resp, err := http.Post(url, "application/json; charset=utf-8", b)
+		if err != nil {
+			log.Fatal("Can't Connect to Server")
+		}
 
-    log.Println("response Status:", res.Status)
-    log.Println("response Headers:", res.Header)
-    body, _ := ioutil.ReadAll(res.Body)
-    log.Println("response Body:", string(body))
+		var r registerRespond
+		err = json.NewDecoder(resp.Body).Decode(&r)
+		if err != nil {
+			log.Fatal("error 301")
+		}
+
+		log.Println(r.Message)
 
 	} else {
 		//generate_credential

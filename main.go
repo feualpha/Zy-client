@@ -5,12 +5,9 @@
 package main
 
 import (
-	"bytes"
 	"bufio"
-	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/howeyc/gopass"
 	"log"
@@ -26,20 +23,11 @@ var (
 	addr = flag.String("addr", "127.0.0.1:8080", "http service address")
 	username = flag.String("username", "", "chat username")
 	register = flag.Bool("register", false, "set to register")
+	join = flag.String("join","default", "join specific room")
 )
 
 const not_username string = ""
 const error_not_username = "no username"
-
-type registerRespond struct {
-  Code int
-  Message string
-}
-
-type registerData struct {
-  Username string
-  Password string
-}
 
 func get_auth(username string, password string) http.Header {
 	req,_ := http.NewRequest("GET", "/", nil)
@@ -69,16 +57,6 @@ func scan_message(text chan string){
 	    text <- in
     }
   }
-}
-
-func scan_username() string {
-	log.Printf("type your username: ")
-	var username string
-  _, err := fmt.Scanf("%s", &username)
-  if err == nil {
-    return string(username)
-  }
-	return ""
 }
 
 func scan_password() string {
@@ -114,10 +92,10 @@ func print_error_and_exit(err error, code int){
 	os.Exit(code)
 }
 
-func get_websocket_connection(auth_header http.Header)(*websocket.Conn, error){
+func get_websocket_connection(header http.Header)(*websocket.Conn, error){
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "wsc"}
 	log.Printf("connecting to %s", u.String())
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), auth_header)
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 	return c, err
 }
 
@@ -166,36 +144,17 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	if *register {
-		name := scan_username()
-		pass := scan_password()
-
-		url := fmt.Sprintf("http://%s/cregister", *addr)
-		json_value := registerData{Username: name, Password: pass}
-
-		b := new(bytes.Buffer)
-    json.NewEncoder(b).Encode(json_value)
-    resp, err := http.Post(url, "application/json; charset=utf-8", b)
-		if err != nil {
-			log.Fatal("Can't Connect to Server")
-		}
-
-		var r registerRespond
-		err = json.NewDecoder(resp.Body).Decode(&r)
-		if err != nil {
-			log.Fatal("error 301")
-		}
-
-		log.Println(r.Message)
-
+		registering(*addr)
 	} else {
 		//generate_credential
 		//auto exit if error
-		auth_header,err := generate_credential(username)
+		header,err := generate_credential(username)
+		header.Add("X-Room", *join)
 		if err != nil { print_error_and_exit(err, 101) }
 
 		//get websocket connection
 		//auto exit if error
-		c, err := get_websocket_connection(auth_header)
+		c, err := get_websocket_connection(header)
 		if err != nil { print_error_and_exit(err, 102) }
 		defer c.Close()
 

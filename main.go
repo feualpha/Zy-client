@@ -22,8 +22,8 @@ import (
 var (
 	addr = flag.String("addr", "127.0.0.1:8080", "http service address")
 	username = flag.String("username", "", "chat username")
-	register = flag.Bool("register", false, "set to register")
 	join = flag.String("join","default", "join specific room")
+	register = flag.Bool("register", false, "set to register")
 )
 
 const not_username string = ""
@@ -94,7 +94,6 @@ func print_error_and_exit(err error, code int){
 
 func get_websocket_connection(header http.Header)(*websocket.Conn, error){
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "wsc"}
-	log.Printf("connecting to %s", u.String())
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 	return c, err
 }
@@ -149,15 +148,15 @@ func main() {
 		//generate_credential
 		//auto exit if error
 		header,err := generate_credential(username)
-		header.Add("X-Room", *join)
 		if err != nil { print_error_and_exit(err, 101) }
+		header.Add("X-Room", *join)
 
 		//get websocket connection
 		//auto exit if error
 		c, err := get_websocket_connection(header)
 		if err != nil { print_error_and_exit(err, 102) }
 		defer c.Close()
-
+		log.Println("connected, you can start sending message")
 		chat_routine(c, interrupt)
 	}
 }

@@ -44,7 +44,7 @@ func recive_message(c *websocket.Conn, done chan struct{}){
 			log.Println("read:", err)
 			return
 		}
-		log.Printf("recv: %s", message)
+		log.Printf("%s", message)
 	}
 }
 

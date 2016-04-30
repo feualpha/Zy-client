@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/howeyc/gopass"
 	"log"
@@ -29,32 +30,47 @@ var (
 const not_username string = ""
 const error_not_username = "no username"
 
+type message_receive struct {
+	Sender []byte
+	Body []byte
+}
+
+type message_send struct {
+	Body []byte
+}
+
 func get_auth(username string, password string) http.Header {
 	req,_ := http.NewRequest("GET", "/", nil)
 	req.SetBasicAuth(username,password)
 	return req.Header
 }
 
+func print_message(mesg *message_receive) {
+		fmt.Printf("%s : %s\n",mesg.Sender, mesg.Body)
+}
+
 func recive_message(c *websocket.Conn, done chan struct{}){
 	defer c.Close()
 	defer close(done)
 	for {
-		_, message, err := c.ReadMessage()
+		mesg := new(message_receive)
+		err := c.ReadJSON(mesg)
 		if err != nil {
 			log.Println("read:", err)
 			return
 		}
-		log.Printf("%s", message)
+		print_message(mesg)
 	}
 }
 
-func scan_message(text chan string){
+func scan_message(text chan *message_send){
 	defer close(text)
 	for {
 	  reader := bufio.NewReader(os.Stdin)
 	  in, err := reader.ReadString('\n')
 	  if err == nil {
-	    text <- in
+			body := []byte(strings.TrimSuffix(in, "\n"))
+	    text <- &message_send{Body: body}			
     }
   }
 }
@@ -98,20 +114,20 @@ func get_websocket_connection(header http.Header)(*websocket.Conn, error){
 	return c, err
 }
 
-func start_scan_routine(c *websocket.Conn, done chan struct{}, text chan string){
+func start_scan_routine(c *websocket.Conn, done chan struct{}, text chan *message_send){
 	go recive_message(c, done)
 	go scan_message(text)
 }
 
 func chat_routine(c *websocket.Conn, interrupt chan os.Signal){
 	done := make(chan struct{})
-	text := make(chan string)
+	text := make(chan *message_send)
 	start_scan_routine(c, done, text)
 
 	for {
 		select {
 		case t:= <-text:
-			err := c.WriteMessage(websocket.TextMessage, []byte(t))
+			err := c.WriteJSON(t)
 			if err != nil {
 				log.Println("write:", err)
 				return

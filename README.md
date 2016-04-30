@@ -4,5 +4,4 @@ Zy-client. a chat client for Zy.
 ###TODO
 - test
 - Switch Room
-- JSON Format
 - Standard way
